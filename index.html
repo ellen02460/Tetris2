@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tetris</title>
+<meta name="theme-color" content="#0f1117">
+<meta name="description" content="브라우저와 휴대폰에서 즐기는 테트리스">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tetris">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root{
+  --bg:#0f1117; --panel:#171a23; --line:#262b38; --text:#e7e9ef; --muted:#8a90a2; --accent:#7aa2ff;
+  --I:#4dd4e8; --O:#f2cf4a; --T:#b07cf0; --S:#6fd17a; --Z:#f06a6a; --J:#5b8cf0; --L:#f0a24a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));gap:12px}
+#installBtn{display:none}
+#installBtn.show{display:inline-block}
+h1{margin:0;font-size:20px;letter-spacing:.3em;font-weight:700}
+.game{display:flex;gap:14px;align-items:flex-start}
+.side{display:flex;flex-direction:column;gap:10px;width:110px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+.label{font-size:11px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.val{font-size:20px;font-variant-numeric:tabular-nums;font-weight:600}
+canvas{display:block}
+#board{background:#0b0d12;border:1px solid var(--line);border-radius:10px}
+.stage{position:relative}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(11,13,18,.82);border-radius:10px;text-align:center;padding:16px}
+.overlay.hidden{display:none}
+.overlay h2{margin:0;font-size:22px}
+.overlay p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:10px 16px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#0b0d12;font-weight:700}
+.keys{font-size:11px;color:var(--muted);line-height:1.9;white-space:nowrap;padding:10px 8px}
+kbd{font-family:inherit;font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--text)}
+.touch{display:none;gap:8px;flex-wrap:wrap;justify-content:center;max-width:420px}
+.touch button{min-width:64px;padding:14px 10px;font-size:18px}
+@media (max-width:620px), (pointer:coarse){
+  .touch{display:flex}
+  .keys{display:none}
+  .side{width:78px}
+  .val{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TETRIS</h1>
+  <div class="game">
+    <div class="side">
+      <div class="box"><div class="label">Hold</div><canvas id="hold" width="80" height="60"></canvas></div>
+      <div class="box"><div class="label">Score</div><div class="val" id="score">0</div></div>
+      <div class="box"><div class="label">Best</div><div class="val" id="best">0</div></div>
+      <div class="box"><div class="label">Level</div><div class="val" id="level">1</div></div>
+      <div class="box"><div class="label">Lines</div><div class="val" id="lines">0</div></div>
+    </div>
+    <div class="stage">
+      <canvas id="board"></canvas>
+      <div class="overlay" id="overlay">
+        <h2 id="ovTitle">TETRIS</h2>
+        <p id="ovText">블록을 쌓아 줄을 지워 보세요.</p>
+        <button class="primary" id="startBtn">시작하기</button>
+        <button id="installBtn">📲 앱으로 설치</button>
+        <p id="iosHint" style="display:none;font-size:12px">iPhone: 공유 버튼 → <b>홈 화면에 추가</b></p>
+      </div>
+    </div>
+    <div class="side">
+      <div class="box"><div class="label">Next</div><canvas id="next" width="80" height="220"></canvas></div>
+      <div class="box keys">
+        <kbd>←</kbd><kbd>→</kbd> 이동<br>
+        <kbd>↑</kbd> <kbd>X</kbd> 회전<br>
+        <kbd>Z</kbd> 반대 회전<br>
+        <kbd>↓</kbd> 소프트 드롭<br>
+        <kbd>Space</kbd> 하드 드롭<br>
+        <kbd>C</kbd> 홀드<br>
+        <kbd>P</kbd> 일시정지
+      </div>
+    </div>
+  </div>
+  <div class="touch">
+    <button data-a="left">◀</button>
+    <button data-a="rot">⟳</button>
+    <button data-a="right">▶</button>
+    <button data-a="soft">▼</button>
+    <button data-a="hard">⤓</button>
+    <button data-a="hold">홀드</button>
+    <button data-a="pause">⏸</button>
+  </div>
+</div>
+<script>
+(() => {
+const COLS = 10, ROWS = 20, HIDDEN = 2;
+const css = getComputedStyle(document.documentElement);
+const COLORS = {}; 'IOTSZJL'.split('').forEach(k => COLORS[k] = css.getPropertyValue('--' + k).trim());
+
+const SHAPES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1],[0,0,0]],
+  S: [[0,1,1],[1,1,0],[0,0,0]],
+  Z: [[1,1,0],[0,1,1],[0,0,0]],
+  J: [[1,0,0],[1,1,1],[0,0,0]],
+  L: [[0,0,1],[1,1,1],[0,0,0]],
+};
+// SRS wall kicks (y positive = up in spec; converted below)
+const KICKS = {
+  '0>1':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]], '1>0':[[0,0],[1,0],[1,-1],[0,2],[1,2]],
+  '1>2':[[0,0],[1,0],[1,-1],[0,2],[1,2]],     '2>1':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],
+  '2>3':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],    '3>2':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],
+  '3>0':[[0,0],[-1,0],[-1,-1],[0,2],[-1,2]],  '0>3':[[0,0],[1,0],[1,1],[0,-2],[1,-2]],
+};
+const KICKS_I = {
+  '0>1':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]], '1>0':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],
+  '1>2':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]], '2>1':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],
+  '2>3':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]], '3>2':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],
+  '3>0':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]], '0>3':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]],
+};
+
+const board = document.getElementById('board'), ctx = board.getContext('2d');
+const holdC = document.getElementById('hold').getContext('2d');
+const nextC = document.getElementById('next').getContext('2d');
+let CELL = 28;
+
+function resize(){
+  const maxH = window.innerHeight - 140;
+  const maxW = window.innerWidth - (window.innerWidth < 620 ? 200 : 300);
+  CELL = Math.max(14, Math.min(32, Math.floor(Math.min(maxH / ROWS, maxW / COLS))));
+  const dpr = window.devicePixelRatio || 1;
+  board.style.width = COLS*CELL + 'px'; board.style.height = ROWS*CELL + 'px';
+  board.width = COLS*CELL*dpr; board.height = ROWS*CELL*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+
+let grid, piece, queue, holdType, canHold, score, lines, level, dropTimer, lockTimer, lockMoves, running, paused, over, lastTime, combo, b2b;
+let best = 0; try { best = +localStorage.getItem('tetris-best') || 0; } catch(e){}
+document.getElementById('best').textContent = best;
+
+const rotate = m => m[0].map((_, i) => m.map(r => r[i]).reverse());
+function shapeOf(type, rot){ let m = SHAPES[type]; for (let i=0;i<rot;i++) m = rotate(m); return m; }
+
+let bag = [];
+function nextType(){
+  if (!bag.length){ bag = 'IOTSZJL'.split(''); for (let i=bag.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [bag[i],bag[j]]=[bag[j],bag[i]]; } }
+  return bag.pop();
+}
+function spawn(type){
+  const m = shapeOf(type, 0);
+  piece = { type, rot:0, m, x: Math.floor((COLS - m[0].length)/2), y: type==='I' ? -1 : 0 };
+  lockTimer = 0; lockMoves = 0;
+  if (collides(piece.m, piece.x, piece.y)) gameOver();
+}
+function collides(m, x, y){
+  for (let r=0;r<m.length;r++) for (let c=0;c<m[r].length;c++){
+    if (!m[r][c]) continue;
+    const gx = x+c, gy = y+r+HIDDEN;
+    if (gx<0 || gx>=COLS || gy>=ROWS+HIDDEN) return true;
+    if (gy>=0 && grid[gy][gx]) return true;
+  }
+  return false;
+}
+function onGround(){ return collides(piece.m, piece.x, piece.y+1); }
+function resetLockOnMove(){ if (onGround() && lockMoves < 15){ lockTimer = 0; lockMoves++; } }
+
+function move(dx){ if (!collides(piece.m, piece.x+dx, piece.y)){ piece.x += dx; resetLockOnMove(); return true; } return false; }
+function rotatePiece(dir){
+  if (piece.type === 'O') return;
+  const to = (piece.rot + dir + 4) % 4, m = shapeOf(piece.type, to);
+  const table = piece.type === 'I' ? KICKS_I : KICKS;
+  for (const [kx, ky] of table[piece.rot + '>' + to]){
+    if (!collides(m, piece.x+kx, piece.y-ky)){
+      piece.x += kx; piece.y -= ky; piece.m = m; piece.rot = to; resetLockOnMove(); return;
+    }
+  }
+}
+function softDrop(){ if (!collides(piece.m, piece.x, piece.y+1)){ piece.y++; score += 1; dropTimer = 0; return true; } return false; }
+function hardDrop(){ let n=0; while (!collides(piece.m, piece.x, piece.y+1)){ piece.y++; n++; } score += n*2; lock(); }
+function hold(){
+  if (!canHold) return;
+  const cur = piece.type;
+  if (holdType){ const t = holdType; holdType = cur; spawn(t); } else { holdType = cur; spawn(queue.shift()); queue.push(nextType()); }
+  canHold = false; drawSide();
+}
+
+function lock(){
+  let above = true;
+  piece.m.forEach((row, r) => row.forEach((v, c) => {
+    if (!v) return;
+    const gy = piece.y + r + HIDDEN;
+    if (gy >= HIDDEN) above = false;
+    if (gy >= 0) grid[gy][piece.x + c] = piece.type;
+  }));
+  if (above){ gameOver(); return; }
+  clearLines();
+  spawn(queue.shift()); queue.push(nextType());
+  canHold = true; dropTimer = 0; drawSide();
+}
+
+let flash = []; let flashT = 0;
+function clearLines(){
+  const full = [];
+  for (let y=0;y<ROWS+HIDDEN;y++) if (grid[y].every(Boolean)) full.push(y);
+  if (!full.length){ combo = -1; return; }
+  flash = full.map(y => y - HIDDEN); flashT = 180;
+  full.forEach(y => { grid.splice(y,1); grid.unshift(Array(COLS).fill(null)); });
+  const n = full.length;
+  combo++;
+  let pts = [0,100,300,500,800][n] * level;
+  if (n === 4){ if (b2b) pts = Math.floor(pts*1.5); b2b = true; } else b2b = false;
+  if (combo > 0) pts += 50 * combo * level;
+  score += pts; lines += n;
+  level = Math.floor(lines/10) + 1;
+  updateStats();
+}
+function speed(){ return Math.max(50, 1000 * Math.pow(0.8 - (level-1)*0.007, level-1)); }
+
+function updateStats(){
+  document.getElementById('score').textContent = score;
+  document.getElementById('lines').textContent = lines;
+  document.getElementById('level').textContent = level;
+  if (score > best){ best = score; document.getElementById('best').textContent = best; try{ localStorage.setItem('tetris-best', best); }catch(e){} }
+}
+
+function cell(c, x, y, color, s, alpha=1){
+  c.globalAlpha = alpha;
+  c.fillStyle = color; c.fillRect(x+1, y+1, s-2, s-2);
+  c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(x+1, y+1, s-2, Math.max(2, s*0.15));
+  c.fillStyle = 'rgba(0,0,0,.22)'; c.fillRect(x+1, y+s-1-Math.max(2,s*0.12), s-2, Math.max(2,s*0.12));
+  c.globalAlpha = 1;
+}
+function draw(){
+  if (!grid) { ctx.fillStyle = '#0b0d12'; ctx.fillRect(0,0,COLS*CELL,ROWS*CELL); return; }
+  ctx.fillStyle = '#0b0d12'; ctx.fillRect(0,0,COLS*CELL,ROWS*CELL);
+  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  for (let x=1;x<COLS;x++){ ctx.beginPath(); ctx.moveTo(x*CELL+.5,0); ctx.lineTo(x*CELL+.5,ROWS*CELL); ctx.stroke(); }
+  for (let y=1;y<ROWS;y++){ ctx.beginPath(); ctx.moveTo(0,y*CELL+.5); ctx.lineTo(COLS*CELL,y*CELL+.5); ctx.stroke(); }
+  for (let y=0;y<ROWS;y++) for (let x=0;x<COLS;x++){ const t = grid[y+HIDDEN][x]; if (t) cell(ctx, x*CELL, y*CELL, COLORS[t], CELL); }
+  if (flashT > 0){ ctx.fillStyle = `rgba(255,255,255,${flashT/400})`; flash.forEach(y => ctx.fillRect(0, y*CELL, COLS*CELL, CELL)); }
+  if (piece && !over){
+    let gy = piece.y; while (!collides(piece.m, piece.x, gy+1)) gy++;
+    piece.m.forEach((row, r) => row.forEach((v, c) => {
+      if (!v) return;
+      if (gy+r >= 0){ ctx.strokeStyle = COLORS[piece.type]; ctx.globalAlpha=.5; ctx.lineWidth=2; ctx.strokeRect((piece.x+c)*CELL+2, (gy+r)*CELL+2, CELL-4, CELL-4); ctx.globalAlpha=1; }
+      if (piece.y+r >= 0) cell(ctx, (piece.x+c)*CELL, (piece.y+r)*CELL, COLORS[piece.type], CELL);
+    }));
+  }
+}
+function drawMini(c, type, ox, oy, w, h){
+  if (!type) return;
+  let m = SHAPES[type];
+  m = m.filter(r => r.some(Boolean));
+  const s = 16, cols = m[0].length;
+  const px = ox + (w - cols*s)/2, py = oy + (h - m.length*s)/2;
+  m.forEach((row, r) => row.forEach((v, cc) => { if (v) cell(c, px+cc*s, py+r*s, COLORS[type], s, canHold || c!==holdC ? 1 : .35); }));
+}
+function drawSide(){
+  holdC.clearRect(0,0,80,60); nextC.clearRect(0,0,80,220);
+  drawMini(holdC, holdType, 0, 0, 80, 60);
+  (queue||[]).slice(0,5).forEach((t, i) => drawMini(nextC, t, 0, i*44, 80, 44));
+}
+
+function loop(t){
+  if (!running) return;
+  const dt = Math.min(100, t - lastTime); lastTime = t;
+  if (!paused){
+    if (flashT > 0) flashT -= dt;
+    dropTimer += dt;
+    if (dropTimer >= speed()){ dropTimer = 0; if (!collides(piece.m, piece.x, piece.y+1)) piece.y++; }
+    if (onGround()){ lockTimer += dt; if (lockTimer >= 500) lock(); } else lockTimer = 0;
+    draw();
+  }
+  if (running) requestAnimationFrame(loop);
+}
+
+const overlay = document.getElementById('overlay');
+function showOverlay(title, text, btn){ document.getElementById('ovTitle').textContent = title; document.getElementById('ovText').innerHTML = text; document.getElementById('startBtn').textContent = btn; overlay.classList.remove('hidden'); }
+function start(){
+  grid = Array.from({length: ROWS+HIDDEN}, () => Array(COLS).fill(null));
+  bag = []; queue = Array.from({length:5}, nextType);
+  holdType = null; canHold = true; score = 0; lines = 0; level = 1; combo = -1; b2b = false;
+  dropTimer = 0; over = false; paused = false; flashT = 0;
+  spawn(queue.shift()); queue.push(nextType());
+  updateStats(); drawSide();
+  overlay.classList.add('hidden');
+  if (!running){ running = true; lastTime = performance.now(); requestAnimationFrame(loop); }
+}
+function gameOver(){
+  over = true; running = false; draw();
+  showOverlay('GAME OVER', `점수 <b style="color:var(--text)">${score}</b> · ${lines}줄 · 레벨 ${level}`, '다시 하기');
+}
+function togglePause(){
+  if (!running || over) return;
+  paused = !paused;
+  if (paused) showOverlay('일시정지', 'P 키나 버튼을 눌러 계속하세요.', '계속하기');
+  else { overlay.classList.add('hidden'); lastTime = performance.now(); }
+}
+document.getElementById('startBtn').addEventListener('click', () => { if (paused) togglePause(); else start(); });
+
+function act(a){
+  if (a === 'pause') return togglePause();
+  if (!running || paused || over) return;
+  if (a==='left') move(-1); else if (a==='right') move(1);
+  else if (a==='rot') rotatePiece(1); else if (a==='ccw') rotatePiece(-1);
+  else if (a==='soft') softDrop(); else if (a==='hard') hardDrop(); else if (a==='hold') hold();
+  updateStats(); draw();
+}
+
+// Keyboard with DAS/ARR
+const held = {}; const DAS = 160, ARR = 45;
+const KEYMAP = { ArrowLeft:'left', ArrowRight:'right', ArrowDown:'soft', ArrowUp:'rot', KeyX:'rot', KeyZ:'ccw', ControlLeft:'ccw', Space:'hard', KeyC:'hold', ShiftLeft:'hold', KeyP:'pause', Escape:'pause' };
+document.addEventListener('keydown', e => {
+  if ((e.code === 'Enter' || e.code === 'Space') && !overlay.classList.contains('hidden')){ e.preventDefault(); document.getElementById('startBtn').click(); return; }
+  const a = KEYMAP[e.code]; if (!a) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  act(a);
+  if (a==='left' || a==='right' || a==='soft'){
+    clearTimeout(held[a]?.t); clearInterval(held[a]?.i);
+    held[a] = { t: setTimeout(() => { held[a].i = setInterval(() => act(a), a==='soft' ? 35 : ARR); }, a==='soft' ? 0 : DAS) };
+  }
+});
+document.addEventListener('keyup', e => { const a = KEYMAP[e.code]; if (held[a]){ clearTimeout(held[a].t); clearInterval(held[a].i); delete held[a]; } });
+window.addEventListener('blur', () => { Object.values(held).forEach(h => { clearTimeout(h.t); clearInterval(h.i); }); for (const k in held) delete held[k]; if (running && !paused) togglePause(); });
+
+// Touch buttons (with hold-to-repeat)
+document.querySelectorAll('.touch button').forEach(b => {
+  const a = b.dataset.a; let t, i;
+  const stop = () => { clearTimeout(t); clearInterval(i); };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); act(a); if (a==='left'||a==='right'||a==='soft'){ t = setTimeout(() => i = setInterval(() => act(a), a==='soft'?40:70), 180); } });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+});
+
+// Swipe on board
+let sx, sy, st, moved;
+board.addEventListener('touchstart', e => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; st = Date.now(); moved = false; }, {passive:true});
+board.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const p = e.touches[0], dx = p.clientX - sx, dy = p.clientY - sy;
+  if (Math.abs(dx) > CELL){ act(dx > 0 ? 'right' : 'left'); sx = p.clientX; moved = true; }
+  else if (dy > CELL){ act('soft'); sy = p.clientY; moved = true; }
+}, {passive:false});
+board.addEventListener('touchend', e => {
+  const p = e.changedTouches[0], dy = p.clientY - sy, dt = Date.now() - st;
+  if (!moved && dy > 60 && dt < 250) act('hard');
+  else if (!moved && dt < 250) act('rot');
+});
+
+window.addEventListener('resize', resize);
+resize(); drawSide();
+
+// --- App install (PWA) ---
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+let deferredPrompt = null;
+const installBtn = document.getElementById('installBtn');
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; installBtn.classList.add('show'); });
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; installBtn.classList.remove('show');
+});
+window.addEventListener('appinstalled', () => installBtn.classList.remove('show'));
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) document.getElementById('iosHint').style.display = 'block';
+})();
+</script>
+</body>
+</html>
